@@ -1,30 +1,71 @@
-const nodemailer = require('nodemailer');
+const { google } = require('googleapis');
 const logger = require('./logger');
 
-const createTransport = () => {
-  return nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
-    secure: process.env.EMAIL_PORT == 465,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
+const getOauth2Client = () => {
+  const oAuth2Client = new google.auth.OAuth2(
+    process.env.GMAIL_CLIENT_ID,
+    process.env.GMAIL_CLIENT_SECRET,
+    'https://developers.google.com/oauthplayground'
+  );
+  oAuth2Client.setCredentials({
+    refresh_token: process.env.GMAIL_REFRESH_TOKEN,
   });
+  return oAuth2Client;
+};
+
+const encodeHeaderUtf8 = (value) => {
+  const base64 = Buffer.from(value, 'utf8').toString('base64');
+  return `=?UTF-8?B?${base64}?=`;
+};
+
+const buildRawEmail = (toEmail, subject, html, text) => {
+  const boundary = 'parking-system-boundary';
+  const encodedSubject = encodeHeaderUtf8(subject);
+  const senderEmail = process.env.GMAIL_SENDER_EMAIL || process.env.EMAIL_USER;
+
+  if (!senderEmail) {
+    throw new Error('Missing GMAIL_SENDER_EMAIL or EMAIL_USER');
+  }
+
+  const emailLines = [
+    `From: Parking System <${senderEmail}>`,
+    `To: ${toEmail}`,
+    `Subject: ${encodedSubject}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    '',
+    text || 'Please view this email in an HTML compatible client.',
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    '',
+    html,
+    '',
+    `--${boundary}--`,
+  ];
+
+  return Buffer.from(emailLines.join('\r\n')).toString('base64url');
 };
 
 const sendEmail = async ({ to, subject, html, text }) => {
   try {
-    const transporter = createTransport();
-    const info = await transporter.sendMail({
-      from: process.env.EMAIL_FROM,
-      to,
-      subject,
-      html,
-      text,
+    const oAuth2Client = getOauth2Client();
+    const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
+    
+    const raw = buildRawEmail(to, subject, html, text);
+    
+    const res = await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: {
+        raw: raw,
+      },
     });
-    logger.info(`Email sent: ${info.messageId}`);
-    return info;
+
+    logger.info(`Email sent: ${res.data.id}`);
+    return res.data;
   } catch (error) {
     logger.error(`Email send error: ${error.message}`);
     throw error;
