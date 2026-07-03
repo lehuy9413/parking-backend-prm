@@ -73,7 +73,10 @@ const sendEmail = async ({ to, subject, html, text }) => {
 };
 
 const sendVerificationEmail = async (user, token) => {
-  const verifyUrl = `${process.env.CLIENT_URL}/verify-email?token=${token}`;
+  // Trỏ thẳng link xác nhận về Backend API thay vì mở Flutter app
+  const serverUrl = process.env.SERVER_URL || 'https://parking-backend-prm.onrender.com';
+  const verifyUrl = `${serverUrl}/api/v1/auth/verify-email/${token}`;
+  
   await sendEmail({
     to: user.email,
     subject: 'Verify your email - Parking System',

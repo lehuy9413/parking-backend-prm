@@ -91,6 +91,17 @@ class AuthController {
    */
   verifyEmail = asyncHandler(async (req, res) => {
     const user = await authService.verifyEmail(req.params.token);
+    
+    if (req.accepts('html')) {
+      return res.send(`
+        <div style="text-align: center; font-family: sans-serif; padding: 50px; margin-top: 50px;">
+          <h1 style="color: #16a34a;">✅ Xác thực thành công!</h1>
+          <p style="font-size: 18px; color: #4b5563;">Tài khoản của bạn đã được kích hoạt.</p>
+          <p style="font-size: 16px; color: #6b7280;">Bạn có thể đóng tab này và quay lại ứng dụng để đăng nhập.</p>
+        </div>
+      `);
+    }
+
     ApiResponse.success(res, 'Email verified successfully. You can now log in.', {
       id: user._id,
       email: user.email,
