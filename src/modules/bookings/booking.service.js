@@ -168,23 +168,22 @@ class BookingService {
           ebEndH += 24;
         }
         const ebDuration = (ebEndH * 60 + ebEndM - (ebStartH * 60 + ebStartM)) / 60;
-        
+
         const ebEntryTime = new Date(eb.scheduledDate);
         ebEntryTime.setHours(ebStartH, ebStartM, 0, 0);
         const ebExitTime = new Date(ebEntryTime.getTime() + ebDuration * 60 * 60 * 1000);
 
-        if (finalEntryTime < ebExitTime && finalExitTime > ebEntryTime) {
-          if (finalEntryTime >= ebEntryTime && finalExitTime <= ebExitTime) {
-            throw ApiError.badRequest(`Vehicle with license plate ${resolvedVehicleInfo.licensePlate} already has a booking that completely covers this time period.`);
-          }
-          // Partial overlap handling
-          if (finalEntryTime >= ebEntryTime && finalEntryTime < ebExitTime && finalExitTime > ebExitTime) {
-            finalEntryTime = new Date(ebExitTime);
-          } else if (finalExitTime > ebEntryTime && finalExitTime <= ebExitTime && finalEntryTime < ebEntryTime) {
-            finalExitTime = new Date(ebEntryTime);
-          } else if (finalEntryTime < ebEntryTime && finalExitTime > ebExitTime) {
-            finalEntryTime = new Date(ebExitTime);
-          }
+        // Block ANY overlap (partial or full) — do not auto-adjust
+        const hasOverlap = finalEntryTime < ebExitTime && finalExitTime > ebEntryTime;
+        if (hasOverlap) {
+          const fmtDate = eb.scheduledDate
+            ? new Date(eb.scheduledDate).toLocaleDateString('vi-VN')
+            : '';
+          throw ApiError.badRequest(
+            `Vehicle ${resolvedVehicleInfo.licensePlate} already has an active booking` +
+            ` (${eb.bookingCode}) on ${fmtDate} from ${eb.startTime} to ${eb.endTime}.` +
+            ` Please choose a different time slot.`
+          );
         }
       }
     }
