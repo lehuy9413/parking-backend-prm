@@ -235,10 +235,10 @@ const suggestOptimalSlot = (availableSlots, vehicleType) => {
 
 /**
  * Generate unique transfer content for bank payments
- * Format: PAR + DDMM + 6 random alphanumeric chars
- * Example: PAR1606A3B2C1
+ * Format: PRM + DDMM + 6 random alphanumeric chars
+ * Example: PRM1606A3B2C1
  */
-const generateTransferContent = (prefix = 'PAR') => {
+const generateTransferContent = (prefix = 'PRM') => {
   const now = new Date();
   const dd = String(now.getDate()).padStart(2, '0');
   const mm = String(now.getMonth() + 1).padStart(2, '0');

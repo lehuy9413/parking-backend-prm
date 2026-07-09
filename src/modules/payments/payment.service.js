@@ -429,7 +429,7 @@ class PaymentService {
     }
 
     // Extract PAR or MP code from transfer content
-    const parMatch = content.match(/(PAR|MP)\d{4}[A-Z0-9]{6}/i);
+    const parMatch = content.match(/(PRM|MP)\d{4}[A-Z0-9]{6}/i);
     const transferContentCode = parMatch ? parMatch[0].toUpperCase() : null;
     let payment = null;
 

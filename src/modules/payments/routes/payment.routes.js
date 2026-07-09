@@ -140,7 +140,7 @@ router.post('/cash', restrictTo('system_admin', 'parking_manager', 'parking_staf
  *                     accountNumber: { type: string }
  *                     accountName: { type: string }
  */
-router.post('/bank-transfer/initiate', restrictTo('system_admin', 'parking_manager', 'parking_staff'), ctrl.initiateBankTransfer);
+router.post('/bank-transfer/initiate', restrictTo('system_admin', 'parking_manager', 'parking_staff', 'parking_user'), ctrl.initiateBankTransfer);
 
 /**
  * @swagger
