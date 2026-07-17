@@ -143,6 +143,8 @@ class ParkingSessionService {
       booking = await Booking.findById(bookingId).populate('vehicleType').populate('assignedSlot');
       if (!booking) throw ApiError.notFound('Booking not found.');
       if (booking.status !== 'approved') throw ApiError.badRequest('Booking is not approved.');
+      // Prevent reuse: if booking already has a session linked, it was already checked in
+      if (booking.parkingSession) throw ApiError.badRequest('This booking has already been used for check-in.');
 
       if (parkingLotId && booking.parkingLot.toString() !== parkingLotId.toString()) {
         throw ApiError.badRequest('This booking is not valid for this parking lot.');
@@ -274,10 +276,9 @@ class ParkingSessionService {
       currentBooking: null,
     });
 
-    // Update booking status
+    // Link session to booking (keep status as 'approved' until check-out)
     if (booking) {
       await Booking.findByIdAndUpdate(booking._id, {
-        status: 'completed',
         parkingSession: session._id,
       });
     }
@@ -465,6 +466,13 @@ class ParkingSessionService {
       currentSession: null,
       currentBooking: null,
     });
+
+    // Update booking status if applicable
+    if (session.booking) {
+      await Booking.findByIdAndUpdate(session.booking._id, {
+        status: 'completed'
+      });
+    }
 
     // Sync lot counts
     await parkingLotService.syncSlotCounts(session.parkingLot);
