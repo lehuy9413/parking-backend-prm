@@ -54,6 +54,22 @@ router.get('/', ctrl.getSessions);
  *       404:
  *         description: No active session found
  */
+/**
+ * @swagger
+ * /parking-sessions/my:
+ *   get:
+ *     summary: Get current user's own parking sessions
+ *     tags: [Parking Sessions]
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [active, completed, cancelled] }
+ *     responses:
+ *       200:
+ *         description: User's session list
+ */
+router.get('/my', ctrl.getMySessions);
+
 router.get('/find-active', restrictTo('system_admin', 'parking_manager', 'parking_staff'), ctrl.findActive);
 
 /**

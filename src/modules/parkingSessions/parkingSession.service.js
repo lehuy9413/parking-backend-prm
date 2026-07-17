@@ -60,6 +60,27 @@ class ParkingSessionService {
     });
   }
 
+  async getMySessions(query, userId) {
+    const { page = 1, limit = 10, sort = '-entryTime', status } = query;
+    const filter = { user: userId };
+    if (status) filter.status = status;
+
+    return Pagination.paginate(ParkingSession, filter, {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sort: Pagination.buildSort(sort),
+      populate: [
+        { path: 'parkingLot', select: 'name code' },
+        { path: 'floor', select: 'name floorNumber' },
+        { path: 'zone', select: 'name code' },
+        { path: 'slot', select: 'slotCode' },
+        { path: 'vehicleType', select: 'name code icon' },
+        { path: 'booking', select: 'bookingCode' },
+        { path: 'payment', select: 'invoiceCode amount method status' },
+      ],
+    });
+  }
+
   async getById(id) {
     const session = await ParkingSession.findById(id)
       .populate('user', 'fullName email phone')

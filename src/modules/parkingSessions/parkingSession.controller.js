@@ -9,6 +9,11 @@ class ParkingSessionController {
     ApiResponse.paginated(res, 'Sessions retrieved.', docs, pagination);
   });
 
+  getMySessions = asyncHandler(async (req, res) => {
+    const { docs, pagination } = await parkingSessionService.getMySessions(req.query, req.user._id);
+    ApiResponse.paginated(res, 'My sessions retrieved.', docs, pagination);
+  });
+
   getById = asyncHandler(async (req, res) => {
     const session = await parkingSessionService.getById(req.params.id);
     ApiResponse.success(res, 'Session retrieved.', session);
