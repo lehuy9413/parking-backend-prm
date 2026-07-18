@@ -590,7 +590,7 @@ class ParkingSessionService {
     }
 
     const images = files.map(f => ({
-      url: `/uploads/evidence/${f.filename}`,
+      url: f.path, // Cloudinary URL
       publicId: f.filename,
       type,
       capturedAt: new Date(),
