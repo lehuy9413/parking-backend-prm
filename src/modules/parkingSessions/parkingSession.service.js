@@ -375,8 +375,23 @@ class ParkingSessionService {
       throw ApiError.badRequest('Session is not active.');
     }
 
-    // If already checked out and pending payment, just return the current session
+    // If already checked out and pending payment
     if (session.status === 'pending_payment') {
+      // Fix stuck sessions: if it's already paid but stuck in pending_payment, complete it
+      if (session.paymentStatus === 'paid') {
+        session.status = 'completed';
+        if (session.slot) {
+          const ParkingSlot = require('../parkingSlots/parkingSlot.model');
+          const parkingLotService = require('../parkingLots/parkingLot.service');
+          await ParkingSlot.findByIdAndUpdate(session.slot._id || session.slot, {
+            status: 'available',
+            currentSession: null,
+            currentBooking: null,
+          });
+          await parkingLotService.syncSlotCounts(session.parkingLot);
+        }
+        await session.save();
+      }
       return session;
     }
 
@@ -486,9 +501,23 @@ class ParkingSessionService {
     session.nightBlocksCount = nightBlocksCount;
     session.surchargeLogs = surchargeLogs;
 
-    // If fully pre-paid, auto mark as paid
-    if (feeToPay === 0 && session.advancePayment > 0) {
+    // If fully pre-paid (or zero fee), auto mark as completed and free slot
+    if (feeToPay === 0) {
       session.paymentStatus = 'paid';
+      session.status = 'completed'; // MUST be completed so UI doesn't get stuck in pending_payment
+      session.payment = null; // No new payment needed
+
+      // Free the slot immediately
+      if (session.slot) {
+        const ParkingSlot = require('../parkingSlots/parkingSlot.model');
+        const parkingLotService = require('../parkingLots/parkingLot.service');
+        await ParkingSlot.findByIdAndUpdate(session.slot._id || session.slot, {
+          status: 'available',
+          currentSession: null,
+          currentBooking: null,
+        });
+        await parkingLotService.syncSlotCounts(session.parkingLot);
+      }
     }
 
     await session.save();
