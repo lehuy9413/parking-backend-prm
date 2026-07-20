@@ -6,6 +6,7 @@
  */
 
 require('dotenv').config();
+process.env.TZ = 'Asia/Ho_Chi_Minh';
 
 const express = require('express');
 const http = require('http');
