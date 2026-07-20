@@ -340,6 +340,10 @@ class BookingService {
     booking.cancelledAt = new Date();
     await booking.save();
 
+    // Sync slot counts
+    const parkingLotService = require('../parkingLots/parkingLot.service');
+    await parkingLotService.syncSlotCounts(booking.parkingLot);
+
     // Notify user if cancelled by staff/admin
     if (role !== 'parking_user') {
       await notificationService.create({

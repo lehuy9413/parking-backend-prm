@@ -390,6 +390,15 @@ class ParkingSessionService {
           });
           await parkingLotService.syncSlotCounts(session.parkingLot);
         }
+        
+        // Update booking status if applicable
+        if (session.booking) {
+          const Booking = require('../bookings/booking.model');
+          await Booking.findByIdAndUpdate(session.booking._id || session.booking, {
+            status: 'completed'
+          });
+        }
+        
         await session.save();
       }
       return session;
@@ -517,6 +526,14 @@ class ParkingSessionService {
           currentBooking: null,
         });
         await parkingLotService.syncSlotCounts(session.parkingLot);
+      }
+      
+      // Update booking status if applicable
+      if (session.booking) {
+        const Booking = require('../bookings/booking.model');
+        await Booking.findByIdAndUpdate(session.booking._id || session.booking, {
+          status: 'completed'
+        });
       }
     }
 
