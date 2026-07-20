@@ -367,11 +367,18 @@ class ParkingSessionService {
     const session = await ParkingSession.findById(sessionId)
       .populate('vehicleType')
       .populate('slot')
-      .populate('booking', 'endTime scheduledDate estimatedFee')
+      .populate('booking', 'startTime endTime scheduledDate estimatedFee')
       .populate('monthlyPass');
 
     if (!session) throw ApiError.notFound('Session not found.');
-    if (session.status !== 'active') throw ApiError.badRequest('Session is not active.');
+    if (session.status !== 'active' && session.status !== 'pending_payment') {
+      throw ApiError.badRequest('Session is not active.');
+    }
+
+    // If already checked out and pending payment, just return the current session
+    if (session.status === 'pending_payment') {
+      return session;
+    }
 
     const exitTime = new Date();
     const durationMs = exitTime - session.entryTime;
@@ -426,7 +433,13 @@ class ParkingSessionService {
 
       if (session.booking.endTime && session.booking.scheduledDate) {
         const scheduledEndStr = `${session.booking.scheduledDate.toISOString().split('T')[0]}T${session.booking.endTime}:00`;
-        const scheduledEnd = new Date(scheduledEndStr);
+        let scheduledEnd = new Date(scheduledEndStr);
+        
+        // If booking crosses midnight (e.g. 22:00 to 02:00), the end date is the next day
+        if (session.booking.startTime && session.booking.endTime < session.booking.startTime) {
+          scheduledEnd.setDate(scheduledEnd.getDate() + 1);
+        }
+
         if (exitTime > scheduledEnd) {
           const overtimeMs = exitTime - scheduledEnd;
           overtimeHours = overtimeMs / (1000 * 60 * 60);
@@ -451,7 +464,6 @@ class ParkingSessionService {
       dayBlocksCount = calculated.dayBlocksCount;
       nightBlocksCount = calculated.nightBlocksCount;
     }
-
     const totalFee = fee + overtimeFee;
 
     // Deduct advance payment
@@ -466,7 +478,7 @@ class ParkingSessionService {
     session.isOvertime = isOvertime;
     session.overtimeHours = overtimeHours;
     session.checkOutStaff = staffId;
-    session.status = 'completed';
+    session.status = 'pending_payment';
     
     // Set block tracking info
     session.totalBlocks = totalBlocks + overtimeBlocks;
@@ -480,39 +492,6 @@ class ParkingSessionService {
     }
 
     await session.save();
-
-    // Free the slot
-    await ParkingSlot.findByIdAndUpdate(session.slot._id, {
-      status: 'available',
-      currentSession: null,
-      currentBooking: null,
-    });
-
-    // Update booking status if applicable
-    if (session.booking) {
-      await Booking.findByIdAndUpdate(session.booking._id, {
-        status: 'completed'
-      });
-    }
-
-    // Sync lot counts
-    await parkingLotService.syncSlotCounts(session.parkingLot);
-
-    // Realtime: emit slot freed
-    const lotId = (session.parkingLot || '').toString();
-    if (io) {
-      io.to(`parkingLot:${lotId}`).emit('slotStatusUpdated', {
-        slotId: session.slot._id,
-        slotCode: session.slot.slotCode,
-        status: 'available',
-      });
-      io.to(`parkingLot:${lotId}`).emit('sessionEnded', {
-        sessionId: session._id,
-        licensePlate: session.vehicleInfo.licensePlate,
-        totalFee,
-        durationHours: session.durationHours,
-      });
-    }
 
     // Notify user
     if (session.user) {
@@ -534,7 +513,7 @@ class ParkingSessionService {
   async findActiveSession(query) {
     const { licensePlate, sessionCode, parkingLotId } = query;
 
-    const filter = { status: 'active' };
+    const filter = { status: { $in: ['active', 'pending_payment'] } };
     if (licensePlate) {
       // Clean input: remove spaces, dashes, dots
       const cleanPlate = licensePlate.replace(/[^a-zA-Z0-9]/g, '');
@@ -564,14 +543,17 @@ class ParkingSessionService {
   async getOverdueSessions(parkingLotId) {
     const sessions = await ParkingSession.find({
       parkingLot: parkingLotId,
-      status: 'active',
+      status: { $in: ['active', 'pending_payment'] },
       isOvertime: false,
-    }).populate('booking', 'endTime scheduledDate').populate('user', 'fullName email');
+    }).populate('booking', 'startTime endTime scheduledDate').populate('user', 'fullName email');
 
     const now = new Date();
     const overdue = sessions.filter(s => {
       if (!s.booking?.endTime) return false;
-      const end = new Date(`${s.booking.scheduledDate.toISOString().split('T')[0]}T${s.booking.endTime}:00`);
+      let end = new Date(`${s.booking.scheduledDate.toISOString().split('T')[0]}T${s.booking.endTime}:00`);
+      if (s.booking.startTime && s.booking.endTime < s.booking.startTime) {
+        end.setDate(end.getDate() + 1);
+      }
       return now > end;
     });
 

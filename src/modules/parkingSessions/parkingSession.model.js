@@ -107,7 +107,7 @@ const parkingSessionSchema = new mongoose.Schema(
     // Session status
     status: {
       type: String,
-      enum: ['active', 'completed', 'cancelled', 'abandoned'],
+      enum: ['active', 'pending_payment', 'completed', 'cancelled', 'abandoned'],
       default: 'active',
     },
     // Evidence photos (entry/exit)

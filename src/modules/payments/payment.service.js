@@ -1,6 +1,8 @@
 const Payment = require('./payment.model');
 const ParkingSession = require('../parkingSessions/parkingSession.model');
 const Booking = require('../bookings/booking.model');
+const ParkingSlot = require('../parkingSlots/parkingSlot.model');
+const parkingLotService = require('../parkingLots/parkingLot.service');
 const notificationService = require('../notifications/notification.service');
 const ApiError = require('../../utils/ApiError');
 const Pagination = require('../../utils/pagination');
@@ -60,8 +62,8 @@ class PaymentService {
 
     const session = await ParkingSession.findById(sessionId);
     if (!session) throw ApiError.notFound('Parking session not found.');
-    if (session.status !== 'completed') {
-      throw ApiError.badRequest('Session must be completed (checked out) before payment.');
+    if (session.status !== 'pending_payment') {
+      throw ApiError.badRequest('Session must be checked out (pending_payment) before payment.');
     }
     if (session.paymentStatus === 'paid') {
       throw ApiError.badRequest('Session is already paid.');
@@ -89,8 +91,31 @@ class PaymentService {
 
     // Update session payment status
     session.paymentStatus = 'paid';
+    session.status = 'completed';
     session.payment = payment._id;
     await session.save();
+
+    // Free the slot
+    if (session.slot) {
+      await ParkingSlot.findByIdAndUpdate(session.slot._id || session.slot, {
+        status: 'available',
+        currentSession: null,
+        currentBooking: null,
+      });
+      await parkingLotService.syncSlotCounts(session.parkingLot);
+
+      // Realtime: emit slot freed
+      const lotId = (session.parkingLot || '').toString();
+      const io = require('../../server').io; // Assuming io can be accessed this way, or we just rely on clients polling. Actually, processCash doesn't receive io.
+      // Wait, processCash does NOT have `io`. I will omit io here, since it's just a cash transaction handled locally by the staff, the UI updates instantly.
+    }
+
+    // Update booking status if applicable
+    if (session.booking) {
+      await Booking.findByIdAndUpdate(session.booking._id || session.booking, {
+        status: 'completed'
+      });
+    }
 
     // Notify user
     if (session.user) {
@@ -155,8 +180,19 @@ class PaymentService {
     // Update session
     const session = await ParkingSession.findById(payment.parkingSession._id);
     session.paymentStatus = 'paid';
+    session.status = 'completed';
     session.payment = payment._id;
     await session.save();
+
+    // Free the slot
+    if (session.slot) {
+      await ParkingSlot.findByIdAndUpdate(session.slot._id || session.slot, {
+        status: 'available',
+        currentSession: null,
+        currentBooking: null,
+      });
+      await parkingLotService.syncSlotCounts(session.parkingLot);
+    }
 
     if (session.user) {
       await notificationService.create({
@@ -230,8 +266,8 @@ class PaymentService {
 
     const session = await ParkingSession.findById(sessionId);
     if (!session) throw ApiError.notFound('Parking session not found.');
-    if (session.status !== 'completed') {
-      throw ApiError.badRequest('Session must be completed (checked out) before payment.');
+    if (session.status !== 'pending_payment') {
+      throw ApiError.badRequest('Session must be checked out (pending_payment) before payment.');
     }
     if (session.paymentStatus === 'paid') {
       throw ApiError.badRequest('Session is already paid.');
@@ -522,8 +558,39 @@ class PaymentService {
       const session = await ParkingSession.findById(payment.parkingSession._id || payment.parkingSession);
       if (session) {
         session.paymentStatus = 'paid';
+        session.status = 'completed';
         session.payment = payment._id;
         await session.save();
+        
+        // Free the slot
+        if (session.slot) {
+          await ParkingSlot.findByIdAndUpdate(session.slot._id || session.slot, {
+            status: 'available',
+            currentSession: null,
+            currentBooking: null,
+          });
+          await parkingLotService.syncSlotCounts(session.parkingLot);
+
+          if (io) {
+            const lotId = (session.parkingLot || '').toString();
+            io.to(`parkingLot:${lotId}`).emit('slotStatusUpdated', {
+              slotId: session.slot._id || session.slot,
+              status: 'available',
+            });
+            io.to(`parkingLot:${lotId}`).emit('sessionEnded', {
+              sessionId: session._id,
+              totalFee: payment.amount,
+            });
+          }
+        }
+        
+        // Update booking status if applicable
+        if (session.booking) {
+          await Booking.findByIdAndUpdate(session.booking._id || session.booking, {
+            status: 'completed'
+          });
+        }
+        
         logger.info(`[SEPay Webhook] Session ${session.sessionCode} marked as paid.`);
       }
 
